@@ -1,5 +1,7 @@
 # OPHELib
 
+> This is a fork of the original ophelib project. We change it to an alternative supporting fast encryption, where $g=n+1, \lambda = \phi (n) = (p-1)(q-1)$.
+
 `OPHELib` is a library providing optimized homomorphic encryption functionality, at the moment focusing on the Paillier encryption scheme.
 
 ## Quick Start

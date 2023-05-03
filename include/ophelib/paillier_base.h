@@ -95,6 +95,7 @@ namespace ophelib {
          * Not all implementations use this
          */
         Integer a;
+        Integer lambda;
 
         PrivateKey(const size_t key_size_bits, const Integer &p, const Integer &q);
         PrivateKey(const size_t key_size_bits, const size_t a_bits, const Integer &p, const Integer &q, const Integer &a);

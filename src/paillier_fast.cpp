@@ -147,15 +147,19 @@ namespace ophelib {
 
             n = p * q;
         }
-        while(n.size_bits() != key_size_bits || p == q);
+        while(n.size_bits() != key_size_bits || p == q || p.size_bits() != q.size_bits());
 
         if(p > q)
             swap(p, q);
 
-        Integer lambda = Integer::lcm(p - 1, q - 1);
-        g = Integer(2).pow_mod_n(lambda / a, n);
+        // Integer lambda = Integer::lcm(p - 1, q - 1);
+        // g = Integer(2).pow_mod_n(lambda / a, n);
+
+        Integer lambda = (p - 1) * (q - 1);
+        g = n + 1;
 
         priv = PrivateKey(key_size_bits, a_bits, p, q, a);
+        priv.lambda = lambda;
         pub = PublicKey(key_size_bits, n, g);
 
         have_priv = true;
@@ -172,7 +176,9 @@ namespace ophelib {
 
         if(have_priv) {
             fast_mod = std::make_shared<FastMod>(priv.p, priv.q, priv.p * priv.p, priv.q * priv.q, pub.n, n2);
-            mu = Integer::L(fast_mod.get()->pow_mod_n2(pub.g, priv.a), pub.n).inv_mod_n(pub.n);
+            // mu = Integer::L(fast_mod.get()->pow_mod_n2(pub.g, priv.a), pub.n).inv_mod_n(pub.n);
+            Integer lambda = (priv.p - 1) * (priv.q - 1);
+            mu = lambda.inv_mod_n(pub.n);
         }
 
         pos_neg_boundary = pub.n / 2;
@@ -197,7 +203,8 @@ namespace ophelib {
 
         Integer ret = (
             Integer::L(
-                fast_mod.get()->pow_mod_n2(ciphertext.data, priv.a),
+                // fast_mod.get()->pow_mod_n2(ciphertext.data, priv.a),
+                fast_mod.get()->pow_mod_n2(ciphertext.data, priv.lambda),
                 pub.n
             ) * mu
         ) % pub.n;
@@ -227,11 +234,15 @@ namespace ophelib {
         Integer m = check_plaintext(plaintext),
                 tmp;
 
-        if(have_priv) {
-            tmp = fast_mod.get()->pow_mod_n2(pub.g, m) * randomizer.get_noise();
-        } else {
-            tmp = pub.g.pow_mod_n(m, n2) * randomizer.get_noise();
-        }
+        // if(have_priv) {
+        //     tmp = fast_mod.get()->pow_mod_n2(pub.g, m) * randomizer.get_noise();
+        // } else {
+        //     tmp = pub.g.pow_mod_n(m, n2) * randomizer.get_noise();
+        // }
+        
+        tmp = (pub.n * m + 1) % n2;
+        tmp = tmp * randomizer.get_noise();
+
         return Ciphertext(tmp % n2, n2_shared, fast_mod);
     }
 
@@ -316,14 +327,38 @@ namespace ophelib {
 
         gn_pow_r.reserve(r_lut_size);
 
+        // omp_declare_lock(writelock);
+        // omp_init_lock(&writelock);
+        // if(paillier->fast_mod) {
+        //     paillier->fast_mod.get()->pow_mod_n2(g_pow_n, r());
+
+        //     #pragma omp parallel for
+        //     for(auto i = 0u; i < r_lut_size; i++) {
+        //         const auto rand = paillier->fast_mod.get()->pow_mod_n2(g_pow_n, r());
+
+        //         omp_set_lock(&writelock);
+        //         gn_pow_r.push_back(rand);
+        //         omp_unset_lock(&writelock);
+        //     }
+        // } else {
+        //     #pragma omp parallel for
+        //     for(auto i = 0u; i < r_lut_size; i++) {
+        //         const auto rand = g_pow_n.pow_mod_n(r(), paillier->n2);
+
+        //         omp_set_lock(&writelock);
+        //         gn_pow_r.push_back(rand);
+        //         omp_unset_lock(&writelock);
+        //     }
+        // }
+        // omp_destroy_lock(&writelock);
+
         omp_declare_lock(writelock);
         omp_init_lock(&writelock);
         if(paillier->fast_mod) {
-            paillier->fast_mod.get()->pow_mod_n2(g_pow_n, r());
-
             #pragma omp parallel for
             for(auto i = 0u; i < r_lut_size; i++) {
-                const auto rand = paillier->fast_mod.get()->pow_mod_n2(g_pow_n, r());
+                const auto tmp_rand = r() % paillier->pub.n + 1;
+                const auto rand = paillier->fast_mod.get()->pow_mod_n2(tmp_rand, paillier->pub.n);
 
                 omp_set_lock(&writelock);
                 gn_pow_r.push_back(rand);
@@ -332,7 +367,9 @@ namespace ophelib {
         } else {
             #pragma omp parallel for
             for(auto i = 0u; i < r_lut_size; i++) {
-                const auto rand = g_pow_n.pow_mod_n(r(), paillier->n2);
+                // const auto rand = g_pow_n.pow_mod_n(r(), paillier->n2);
+                const auto tmp_rand = r() % paillier->pub.n + 1;
+                const auto rand = tmp_rand.pow_mod_n(paillier->pub.n, paillier->n2);
 
                 omp_set_lock(&writelock);
                 gn_pow_r.push_back(rand);
